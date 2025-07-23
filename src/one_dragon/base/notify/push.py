@@ -114,7 +114,7 @@ class Push():
 
         app_id = self.get_config("FS_APPID")
         app_secret = self.get_config("FS_APPSECRET")
-        if image and app_id and app_secret:
+        if image and app_id and app_secret and app_id != "" and app_secret != "":
             image.seek(0)
             # 获取飞书自建应用的tenant_access_token
             auth_endpoint = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
