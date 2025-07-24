@@ -66,4 +66,3 @@ threadpoolctl==3.5.0      # via scikit-learn
 typing-extensions==4.12.2  # via librosa
 urllib3==2.2.2            # via requests
 wrapt==1.16.0             # via smart-open
-requests_toolbelt==1.0.0
