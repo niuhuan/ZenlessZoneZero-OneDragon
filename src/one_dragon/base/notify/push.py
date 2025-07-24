@@ -27,7 +27,7 @@ class Push():
         self.ctx: OneDragonContext = ctx
 
 
-    def bark(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def bark(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 Bark 推送消息。
         """
@@ -69,14 +69,14 @@ class Push():
             self.log_error("Bark 推送失败！")
 
 
-    def console(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def console(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 控制台 推送消息。
         """
         print(f"{title}\n{content}")
 
 
-    def dingding_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def dingding_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 钉钉机器人 推送消息。
         """
@@ -105,7 +105,7 @@ class Push():
             self.log_error("钉钉机器人 推送失败！")
 
 
-    def feishu_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def feishu_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 飞书机器人 推送消息。
         """
@@ -114,6 +114,8 @@ class Push():
 
         app_id = self.get_config("FS_APPID")
         app_secret = self.get_config("FS_APPSECRET")
+        image_key = None
+        
         if image and app_id and app_secret and app_id != "" and app_secret != "":
             image.seek(0)
             # 获取飞书自建应用的tenant_access_token
@@ -141,34 +143,118 @@ class Push():
                 log.error(image_response.text)
                 image_response.raise_for_status()
             image_key = image_response.json()["data"]["image_key"]
-        else:
-            image_key = None
 
-        if image_key:
-            data = {
-                "msg_type": "post",
-                "content": {
-                    "post": {
-                        "zh_cn": {
-                            "title": title,
-                            "content": [
-                                [{
-                                    "tag": "text",
-                                    "text": f"{content}"
-                                }, {
-                                    "tag": "img",
-                                    "image_key": image_key
-                                }]
-                            ]
+        import datetime
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 构建消息卡片数据
+        card_data = {
+            "schema": "2.0",
+            "config": {
+                "update_multi": True,
+                "locales": [
+                    "en_us"
+                ],
+                "style": {
+                    "text_size": {
+                        "normal_v2": {
+                            "default": "normal",
+                            "pc": "normal",
+                            "mobile": "heading"
                         }
                     }
                 }
+            },
+            "body": {
+                "direction": "vertical",
+                "padding": "12px 12px 12px 12px",
+                "elements": [
+                    {
+                        "tag": "column_set",
+                        "horizontal_spacing": "8px",
+                        "horizontal_align": "left",
+                        "columns": [
+                            {
+                                "tag": "column",
+                                "width": "weighted",
+                                "elements": [
+                                    {
+                                        "tag": "markdown",
+                                        "content": f"<font color=\"grey\">运行内容</font>\n{content}",
+                                        "i18n_content": {
+                                            "en_us": f"<font color=\"grey\">Alert details</font>\n{content}"
+                                        },
+                                        "text_align": "left",
+                                        "text_size": "normal_v2",
+                                        "margin": "0px 0px 0px 0px"
+                                    }
+                                ],
+                                "vertical_spacing": "8px",
+                                "horizontal_align": "left",
+                                "vertical_align": "top",
+                                "weight": 1
+                            },
+                            {
+                                "tag": "column",
+                                "width": "weighted",
+                                "elements": [
+                                    {
+                                        "tag": "markdown",
+                                        "content": f"<font color=\"grey\">运行时间</font>\n{current_time}",
+                                        "i18n_content": {
+                                            "en_us": f"<font color=\"grey\">Incident time</font>\n{current_time}"
+                                        },
+                                        "text_align": "left",
+                                        "text_size": "normal_v2",
+                                        "margin": "0px 0px 0px 0px"
+                                    }
+                                ],
+                                "vertical_spacing": "8px",
+                                "horizontal_align": "left",
+                                "vertical_align": "top",
+                                "weight": 1
+                            }
+                        ],
+                        "margin": "0px 0px 0px 0px"
+                    }
+                ]
+            },
+            "header": {
+                "title": {
+                    "tag": "plain_text",
+                    "content": title,
+                    "i18n_content": {
+                        "en_us": title
+                    }
+                },
+                "subtitle": {
+                    "tag": "plain_text",
+                    "content": ""
+                },
+                "template": "red" if has_failure else "green",
+                "padding": "12px 12px 12px 12px"
             }
-        else:
-            data = {
-                "msg_type": "text",
-                "content": {"text": f"{title}\n{content}"}
-            }
+        }
+        
+        # 如果有图片，添加图片元素
+        if image_key:
+            card_data["body"]["elements"].append({
+                "tag": "hr",
+                "margin": "0px 0px 0px 0px"
+            })
+            card_data["body"]["elements"].append({
+                "tag": "img",
+                "img_key": image_key,
+                "preview": True,
+                "transparent": False,
+                "scale_type": "fit_horizontal",
+                "margin": "0px 0px 0px 0px"
+            })
+
+        data = {
+            "msg_type": "interactive",
+            "card": card_data
+        }
 
         url = f'https://open.feishu.cn/open-apis/bot/v2/hook/{self.get_config("FS_KEY")}'
         response = requests.post(url, data=json.dumps(data)).json()
@@ -179,7 +265,7 @@ class Push():
             self.log_error(f"飞书 推送失败！错误信息如下：\n{response}")
 
 
-    def one_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def one_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 OneBot 推送消息。
         """
@@ -227,7 +313,7 @@ class Push():
                 self.log_error("OneBot 群聊推送失败！")
 
 
-    def gotify(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def gotify(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 gotify 推送消息。
         """
@@ -248,7 +334,7 @@ class Push():
             self.log_error("gotify 推送失败！")
 
 
-    def iGot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def iGot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 iGot 推送消息。
         """
@@ -266,7 +352,7 @@ class Push():
             self.log_error(f'iGot 推送失败！{response["errMsg"]}')
 
 
-    def serverchan(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def serverchan(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过 ServerChan 推送消息。
         """
@@ -290,7 +376,7 @@ class Push():
             self.log_error(f'Server 酱 推送失败！错误码：{response["message"]}')
 
 
-    def pushdeer(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def pushdeer(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过PushDeer 推送消息
         """
@@ -314,7 +400,7 @@ class Push():
             self.log_error(f"PushDeer 推送失败！错误信息：{response}")
 
 
-    def chat(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def chat(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过Chat 推送消息
         """
@@ -330,7 +416,7 @@ class Push():
             self.log_error(f"Chat 推送失败！错误信息：{response}")
 
 
-    def pushplus_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def pushplus_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过 pushplus 推送消息。
         """
@@ -374,7 +460,7 @@ class Push():
                 self.log_error("PUSHPLUS 推送失败！")
 
 
-    def weplus_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def weplus_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过 微加机器人 推送消息。
         """
@@ -404,7 +490,7 @@ class Push():
             self.log_error("微加机器人 推送失败！")
 
 
-    def qmsg_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def qmsg_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 qmsg 推送消息。
         """
@@ -421,7 +507,7 @@ class Push():
             self.log_error(f'qmsg 推送失败！{response["reason"]}')
 
 
-    def wecom_app(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def wecom_app(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过 企业微信 APP 推送消息。
         """
@@ -517,7 +603,7 @@ class Push():
             return respone["errmsg"]
 
 
-    def wecom_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def wecom_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过 企业微信机器人 推送消息。
         """
@@ -541,7 +627,7 @@ class Push():
             self.log_error("企业微信机器人推送失败！")
 
 
-    def discord_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def discord_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 Discord Bot 推送消息。
         """
@@ -584,7 +670,7 @@ class Push():
         self.log_info("Discord Bot 推送成功！")
 
 
-    def telegram_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def telegram_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 telegram 机器人 推送消息。
         """
@@ -627,7 +713,7 @@ class Push():
             self.log_error("Telegram 推送失败！")
 
 
-    def aibotk(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def aibotk(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 智能微秘书 推送消息。
         """
@@ -657,7 +743,7 @@ class Push():
             self.log_error(f'智能微秘书 推送失败！{response["error"]}')
 
 
-    def smtp(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def smtp(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 SMTP 邮件 推送消息。
         """
@@ -699,7 +785,7 @@ class Push():
             self.log_error(f"SMTP 邮件 推送失败！{e}")
 
 
-    def pushme(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def pushme(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 PushMe 推送消息。
         """
@@ -726,7 +812,7 @@ class Push():
             self.log_error(f"PushMe 推送失败！{response.status_code} {response.text}")
 
 
-    def chronocat(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def chronocat(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         使用 CHRONOCAT 推送消息。
         """
@@ -768,7 +854,7 @@ class Push():
                         self.log_error(f"QQ群消息:{ids}推送失败！")
 
 
-    def ntfy(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def ntfy(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过 Ntfy 推送消息
         """
@@ -800,7 +886,7 @@ class Push():
             self.log_error(f"Ntfy 推送失败！错误信息：{response.text}")
 
 
-    def wxpusher_bot(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def wxpusher_bot(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过 wxpusher 推送消息。
         支持的环境变量:
@@ -905,7 +991,7 @@ class Push():
         return parsed
 
 
-    def custom_notify(self, title: str, content: str, image: Optional[BytesIO]) -> None:
+    def custom_notify(self, title: str, content: str, image: Optional[BytesIO], has_failure: bool = False) -> None:
         """
         通过 自定义通知 推送消息。
         """
@@ -1029,12 +1115,12 @@ class Push():
         return getattr(self.ctx.push_config, key.lower(), None)
 
 
-    def send(self, content: str, image: Optional[BytesIO] = None, test_method: Optional[str] = None) -> None:
+    def send(self, content: str, image: Optional[BytesIO] = None, test_method: Optional[str] = None, has_failure: bool = False) -> None:
         title = self.ctx.push_config.custom_push_title
 
         notify_function = self.add_notify_function()
         ts = [
-            threading.Thread(target=mode, args=(title, content, image), name=mode.__name__)
+            threading.Thread(target=mode, args=(title, content, image, has_failure), name=mode.__name__)
             for mode in notify_function
         ]
         [t.start() for t in ts]

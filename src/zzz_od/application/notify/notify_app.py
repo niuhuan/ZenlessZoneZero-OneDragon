@@ -89,7 +89,8 @@ class NotifyApp(ZApplication):
             image = self.save_screenshot_bytes()
 
         pusher = Push(self.ctx)
-        pusher.send(message, image)
+        # 传递失败状态给推送方法
+        pusher.send(message, image, has_failure=self.exist_failure)
 
         if self.exist_failure:
             return self.round_fail(wait=5)
